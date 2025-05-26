@@ -1,0 +1,10 @@
+sbatch DeepSEA1.sh
+sbatch DeepSEA2.sh
+sbatch DeepSEA3.sh
+sbatch DeepSEA4.sh
+sbatch DeepSEA5.sh
+sbatch DeepSEA6.sh
+sbatch DeepSEA7.sh
+sbatch DeepSEA8.sh
+sbatch DeepSEA9.sh
+sbatch DeepSEA10.sh

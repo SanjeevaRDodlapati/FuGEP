@@ -62,6 +62,17 @@ class PeakGVarEvaluator(GVarEvaluator):
                  writeMemLimit = writeMemLimit,
                  loggingVerbosity = loggingVerbosity)
         
+        # Configure logging level based on verbosity
+        # 0-1: WARNING and above only
+        # 2: INFO and above (default - shows warnings but not debug)
+        # 3+: DEBUG and above (shows everything)
+        if loggingVerbosity <= 1:
+            logger.setLevel(logging.WARNING)
+        elif loggingVerbosity == 2:
+            logger.setLevel(logging.INFO)
+        else:
+            logger.setLevel(logging.DEBUG)
+        
         # load variants
         self._variants = read_vcf_file(self._vcfFile, strand_index = self._strandIdx,
             require_strand = self._requireStrand,
@@ -156,7 +167,7 @@ class PeakGVarEvaluator(GVarEvaluator):
         # Create a consistent shape helper function
         def ensure_consistent_shape(seq, expected_shape=expected_shape):
             if not hasattr(seq, 'shape') or seq.shape != expected_shape:
-                print(f"DEBUG: Reshaping sequence from {seq.shape if hasattr(seq, 'shape') else 'unknown'} to {expected_shape}")
+                logger.debug(f"Reshaping sequence from {seq.shape if hasattr(seq, 'shape') else 'unknown'} to {expected_shape}")
                 reshaped = np.zeros(expected_shape, dtype=seq.dtype if hasattr(seq, 'dtype') else np.float32)
                 
                 # Copy what we can
@@ -173,7 +184,7 @@ class PeakGVarEvaluator(GVarEvaluator):
                         # Normal copy with slices
                         reshaped[slices] = seq[slices]
                 except Exception as e:
-                    print(f"DEBUG: Error during reshaping: {e}")
+                    logger.debug(f"Error during reshaping: {e}")
                     # Last resort fallback
                     return np.zeros(expected_shape, dtype=seq.dtype if hasattr(seq, 'dtype') else np.float32)
                     
@@ -245,7 +256,7 @@ class PeakGVarEvaluator(GVarEvaluator):
         refLen = refEnc.shape[0]
         seqEncAtRef = seqEnc
         refStart = refLen // 2 - self._startRadius - 1
-        refEnd = refLen // 2 + self._endRadius - 1;[]
+        refEnd = refLen // 2 + self._endRadius - 1
         refEnc = refEnc[refStart:refEnd]
         match = np.array_equal(seqEncAtRef, refEnc)
     
@@ -275,8 +286,8 @@ class PeakGVarEvaluator(GVarEvaluator):
         """
         # Debug information about the batch shapes
         if len(batchRefSeqs) > 0:
-            print(f"DEBUG: First ref seq shape: {batchRefSeqs[0].shape if hasattr(batchRefSeqs[0], 'shape') else 'unknown'}")
-            print(f"DEBUG: Number of ref sequences: {len(batchRefSeqs)}")
+            logger.debug(f"First ref seq shape: {batchRefSeqs[0].shape if hasattr(batchRefSeqs[0], 'shape') else 'unknown'}")
+            logger.debug(f"Number of ref sequences: {len(batchRefSeqs)}")
             seq_shapes = [seq.shape if hasattr(seq, 'shape') else None for seq in batchRefSeqs]
             unique_shapes = set(str(shape) for shape in seq_shapes if shape is not None)
             logger.debug(f"Unique ref seq shapes: {unique_shapes}")
@@ -286,8 +297,10 @@ class PeakGVarEvaluator(GVarEvaluator):
             batchRefSeqs = np.array(batchRefSeqs)
             batchAltSeqs = np.array(batchAltSeqs)
         except ValueError as e:
-            print(f"DEBUG: Error converting sequences to numpy arrays: {e}")
-            print("DEBUG: Attempting to pad sequences to uniform length...")
+            # print(f"DEBUG: Error converting sequences to numpy arrays: {e}")
+            # print("DEBUG: Attempting to pad sequences to uniform length...")
+            logger.debug(f"Error converting sequences to numpy arrays: {e}")
+            logger.debug("Attempting to pad sequences to uniform length...")
             
             # Find the maximum dimensions for padding
             max_shape = None
@@ -305,7 +318,8 @@ class PeakGVarEvaluator(GVarEvaluator):
             if max_shape is None:
                 raise ValueError("Cannot determine shape for padding sequences")
                 
-            print(f"DEBUG: Padding sequences to shape: {max_shape}")
+            # print(f"DEBUG: Padding sequences to shape: {max_shape}")
+            logger.debug(f"Padding sequences to shape: {max_shape}")
             
             # Pad sequences to uniform size
             padded_ref_seqs = []
@@ -336,7 +350,8 @@ class PeakGVarEvaluator(GVarEvaluator):
             # Try converting again
             batchRefSeqs = np.array(padded_ref_seqs)
             batchAltSeqs = np.array(padded_alt_seqs)
-            print(f"DEBUG: After padding - ref shape: {batchRefSeqs.shape}, alt shape: {batchAltSeqs.shape}")
+            # print(f"DEBUG: After padding - ref shape: {batchRefSeqs.shape}, alt shape: {batchAltSeqs.shape}")
+            logger.debug(f"After padding - ref shape: {batchRefSeqs.shape}, alt shape: {batchAltSeqs.shape}")
         
         batchSeqs = np.concatenate([batchRefSeqs, batchAltSeqs])
         # if (batchRefSeqs.shape[0] != self._batchSize) and (batchAltSeqs.shape[0] != self._batchSize):
@@ -458,11 +473,11 @@ class PeakGVarEvaluator(GVarEvaluator):
                 altSeqEnc = get_reverse_complement_encoding(altSeqEnc,
                     self._refSeq.BASES_ARR, self._refSeq.COMPLEMENTARY_BASE_DICT)
             
-            # Debug information about sequence shapes
+            # Debug information about sequence shapes - now properly controlled by logging level
             if hasattr(refSeqEnc, 'shape'):
                 if ix < 5 or len(batchRefSeqs) == 0 or (len(batchRefSeqs) > 0 and 
                         hasattr(batchRefSeqs[0], 'shape') and batchRefSeqs[0].shape != refSeqEnc.shape):
-                    print(f"DEBUG: Variant {ix} ({chrom}:{pos}) - refSeqEnc shape: {refSeqEnc.shape}, altSeqEnc shape: {altSeqEnc.shape if hasattr(altSeqEnc, 'shape') else 'unknown'}")
+                    logger.debug(f"Variant {ix} ({chrom}:{pos}) - refSeqEnc shape: {refSeqEnc.shape}, altSeqEnc shape: {altSeqEnc.shape if hasattr(altSeqEnc, 'shape') else 'unknown'}")
             
             batchRefSeqs.append(refSeqEnc)
             batchAltSeqs.append(altSeqEnc)
