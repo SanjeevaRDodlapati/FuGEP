@@ -19,21 +19,7 @@ from .gve_evaluator import GVarEvaluator
 logger = logging.getLogger("fugep")
 
 class PeakGVarEvaluator(GVarEvaluator):
-    '''
-    Implementation of variant effect evaluator by 
-    applying a model trained for predicting peak type events
     
-    Parameters
-    -----------
-    vcfFile : str
-        Path to vcf File providing genetic variants to be evaluated.
-        Must contain the columns: [#CHROM, POS, ID, REF, ALT], in order. 
-        Column header does not need to be present.
-    strandIdx: int or None, optional.
-        Default is None. If applicable, specify the column index (0-based)
-        in the VCF file that contains strand information for each variant.
-    '''
-
 
     def __init__(self, analysis, model, trainedModelPath, features, 
                  vcfFile, strandIdx = None, requireStrand = False,
@@ -41,9 +27,17 @@ class PeakGVarEvaluator(GVarEvaluator):
                  seqLen = None, batchSize = 64, useCuda = False,
                  dataParallel = False, refSeq = Genome, genAssembly=None,
                  writeMemLimit = 5000, loggingVerbosity = 2):
-        '''
-        Construct a new object of 'GVarEvaluator'
-        '''
+        
+        # Check Parquet dependencies if needed
+        if outputFormat == 'parquet':
+            try:
+                import pyarrow
+            except ImportError:
+                try:
+                    import fastparquet
+                except ImportError:
+                    raise ImportError("Either pyarrow or fastparquet is required for Parquet output. Install with: pip install pyarrow")
+        
         super(PeakGVarEvaluator, self).__init__(model = model, 
                  trainedModelPath = trainedModelPath,
                  features = features, 
