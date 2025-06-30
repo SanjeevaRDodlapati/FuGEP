@@ -2,10 +2,11 @@ import os
 import warnings
 import numpy as np
 import pandas as pd
+from scipy import stats
 
-class MeanGVEParquetHandler(object):
+class PvalParquetHandler(object):
     """
-    Parquet handler for mean GVE, matching the interface of MeanGVEHandler.
+    Parquet handler for p-value computation, matching the interface of PvalHandler.
     Supports chunked writing and optional merging for large-scale datasets.
     """
     def __init__(self,
@@ -44,40 +45,55 @@ class MeanGVEParquetHandler(object):
         
         self._chunk_files = []
         self._chunk_counter = 0
-        self._baseline_predictions = None
 
-    def handle_batch_predictions(self, 
-                               batch_predictions, 
-                               batch_ids, 
-                               baseline_predictions):
+    def handle_batch_predictions(self, batch_predictions, batch_ids, baseline_predictions):
         """
-        Calculate mean GVE for a batch and store results.
+        Calculate p-values for a batch and store results.
+        NOTE: This method is for single predictions per variant. 
+        For proper p-value computation, you need multiple predictions (use handle_batch_mult_predictions).
         """
-        if self._baseline_predictions is None:
-            self._baseline_predictions = baseline_predictions
-
-        # Calculate absolute differences between variant and reference predictions
-        absolute_diffs = np.abs(baseline_predictions[0] - batch_predictions[0])
-        
-        # Prepare results similar to MeanGVEHandler
+        # For single predictions, we can't compute meaningful p-values
+        # Store placeholder values for consistency
         results = []
         for i, variant_id in enumerate(batch_ids):
-            gve_values = absolute_diffs[i]
-            # If multiple predictions, average them
-            if len(gve_values.shape) > 1:
-                gve_mean = np.mean(gve_values, axis=0)
-            else:
-                gve_mean = gve_values
-            
-            # Create result row
-            result_row = [variant_id] + gve_mean.tolist()
+            # Create result row with NaN p-values (can't do t-test with single prediction)
+            pvals = [np.nan] * len(self._features)
+            result_row = [variant_id] + pvals
             results.append(result_row)
 
         # Store results for later writing
         self._results.extend(results)
         self._all_ids.extend(batch_ids)
         
-        # Check if we should write a chunk
+        # Check if we should write a chunk (memory limit in MB)
+        if len(self._results) * len(self._features) * 8 >= self._write_mem_limit * 1024 * 1024:
+            self._write_chunk()
+
+    def handle_batch_mult_predictions(self, batch_predictions, batch_ids, baseline_predictions):
+        """
+        Calculate p-values for multiple predictions per variant.
+        This is the correct method for p-value computation following the original PvalHandler logic.
+        """
+        # Calculate differences: baseline - variant predictions
+        diffs = baseline_predictions - batch_predictions
+        
+        # Perform t-test across the multiple predictions (axis=0)
+        # This gives one p-value per feature
+        _, pvals = stats.ttest_1samp(diffs, 0, axis=0)
+        
+        # Store results for all variants in this batch
+        results = []
+        for i, variant_id in enumerate(batch_ids):
+            # All variants in this batch get the same p-values (computed across all predictions)
+            pvals_list = pvals.tolist() if hasattr(pvals, 'tolist') else list(pvals)
+            result_row = [variant_id] + pvals_list
+            results.append(result_row)
+
+        # Store results for later writing
+        self._results.extend(results)
+        self._all_ids.extend(batch_ids)
+        
+        # Check if we should write a chunk (memory limit in MB)
         if len(self._results) * len(self._features) * 8 >= self._write_mem_limit * 1024 * 1024:
             self._write_chunk()
 
@@ -102,7 +118,7 @@ class MeanGVEParquetHandler(object):
         df = pd.DataFrame(self._results, columns=columns)
         
         # Write chunk file
-        chunk_path = f"{self._output_path_prefix}_chunk_{self._chunk_counter:06d}.parquet"
+        chunk_path = f"{self._output_path_prefix}_pval_chunk_{self._chunk_counter:06d}.parquet"
         df.to_parquet(chunk_path, index=False)
         
         self._chunk_files.append(chunk_path)
@@ -111,7 +127,7 @@ class MeanGVEParquetHandler(object):
         # Clear memory
         self._results = []
         
-        print(f"Written chunk {self._chunk_counter} with {len(df)} rows to {chunk_path}")
+        print(f"Written p-value chunk {self._chunk_counter} with {len(df)} rows to {chunk_path}")
 
     def write_to_file(self, close_filehandle=True):
         """
@@ -122,25 +138,25 @@ class MeanGVEParquetHandler(object):
             self._write_chunk()
             
         if not self._chunk_files:
-            print("No data to write")
+            print("No p-value data to write")
             return
             
         if self._merge_chunks:
             self._merge_all_chunks()
         else:
-            print(f"Kept {len(self._chunk_files)} chunk files for efficient column-wise access:")
+            print(f"Kept {len(self._chunk_files)} p-value chunk files for efficient column-wise access:")
             for chunk_file in self._chunk_files:
                 print(f"  {chunk_file}")
-            print(f"For column-wise operations, use: pd.read_parquet('{self._output_path_prefix}_chunk_*.parquet', columns=['col1', 'col2'])")
+            print(f"For column-wise operations, use: pd.read_parquet('{self._output_path_prefix}_pval_chunk_*.parquet', columns=['col1', 'col2'])")
 
     def _merge_all_chunks(self):
         """
         Merge all chunk files into a single output file.
         Uses streaming approach for memory efficiency.
         """
-        print(f"Merging {len(self._chunk_files)} chunk files...")
+        print(f"Merging {len(self._chunk_files)} p-value chunk files...")
         
-        output_path = f"{self._output_path_prefix}.parquet"
+        output_path = f"{self._output_path_prefix}_pval.parquet"
         
         # Use streaming merge for large datasets
         if len(self._chunk_files) > 100:  # Arbitrary threshold for "many chunks"
@@ -155,7 +171,7 @@ class MeanGVEParquetHandler(object):
             except OSError:
                 warnings.warn(f"Could not remove chunk file: {chunk_file}")
         
-        print(f"Merged results written to {output_path}")
+        print(f"Merged p-value results written to {output_path}")
 
     def _batch_merge(self, output_path):
         """Merge chunks by loading all into memory (for smaller datasets)."""

@@ -36,7 +36,7 @@ class GVarEvaluator(SeqAnalyzer, metaclass = ABCMeta):
                  outputDir = None, save_mult_pred = False,outputFormat = 'tsv',
                  seqLen = None, batchSize = 64, useCuda = False,
                  dataParallel = False, refSeq = Genome, genAssembly = None,
-                 writeMemLimit = 5000, loggingVerbosity = 2):
+                 writeMemLimit = 5000, loggingVerbosity = 2, dataTypeConfig = 'memory_optimized'):
         '''
         Construct a new object of 'GVarEvaluator'
         '''
@@ -55,7 +55,8 @@ class GVarEvaluator(SeqAnalyzer, metaclass = ABCMeta):
                  dataParallel = dataParallel, 
                  refSeq = refSeq,
                  writeMemLimit = writeMemLimit,
-                 loggingVerbosity = loggingVerbosity)
+                 loggingVerbosity = loggingVerbosity,
+                 dataTypeConfig = dataTypeConfig)
         
         self._vcfFile = vcfFile
         self._cpgFile = cpgFile

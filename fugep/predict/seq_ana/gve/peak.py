@@ -26,17 +26,7 @@ class PeakGVarEvaluator(GVarEvaluator):
                  outputDir = None, save_mult_pred = False, outputFormat = 'tsv',
                  seqLen = None, batchSize = 64, useCuda = False,
                  dataParallel = False, refSeq = Genome, genAssembly=None,
-                 writeMemLimit = 5000, loggingVerbosity = 2):
-        
-        # Check Parquet dependencies if needed
-        if outputFormat == 'parquet':
-            try:
-                import pyarrow
-            except ImportError:
-                try:
-                    import fastparquet
-                except ImportError:
-                    raise ImportError("Either pyarrow or fastparquet is required for Parquet output. Install with: pip install pyarrow")
+                 writeMemLimit = 5000, loggingVerbosity = 2, dataTypeConfig = 'memory_optimized'):
         
         super(PeakGVarEvaluator, self).__init__(model = model, 
                  trainedModelPath = trainedModelPath,
@@ -54,7 +44,8 @@ class PeakGVarEvaluator(GVarEvaluator):
                  dataParallel = dataParallel, 
                  refSeq = refSeq,
                  writeMemLimit = writeMemLimit,
-                 loggingVerbosity = loggingVerbosity)
+                 loggingVerbosity = loggingVerbosity,
+                 dataTypeConfig = dataTypeConfig)
         
         # Configure logging level based on verbosity
         # 0-1: WARNING and above only

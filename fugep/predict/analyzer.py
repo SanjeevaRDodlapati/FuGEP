@@ -11,6 +11,8 @@ from ..data import Genome
 from .ana_hdl import LogitScoreHandler, AbsDiffScoreHandler, DiffScoreHandler
 from .ana_hdl import StdHandler, MeanGVEHandler, PvalHandler
 from .ana_hdl import WritePredictionsHandler, WriteRefAltHandler
+# Import enhanced handlers for better parquet support
+from .ana_hdl.handler_factory import create_mean_gve_handler, create_pval_handler
 from .utils import _pad_sequence
 from .utils import _truncate_sequence
 from .utils import createFilePathWithPrefix
@@ -121,7 +123,7 @@ class Analyzer(metaclass = ABCMeta):
                  seqLen = None, mode = 'prediction', model_built = 'pytorch',
                  batchSize = 64, useCuda = False,
                  dataParallel = False, refSeq = Genome,
-                 writeMemLimit = 5000, loggingVerbosity = 2):
+                 writeMemLimit = 5000, loggingVerbosity = 2, dataTypeConfig = 'memory_optimized'):
         """
         Constructs a new `Analyzer` object.
         """
@@ -177,6 +179,7 @@ class Analyzer(metaclass = ABCMeta):
             self._refSeq._unpicklable_init()
 
         self._writeMemLimit = writeMemLimit
+        self._dataTypeConfig = dataTypeConfig
         
         initialize_logger(
             os.path.join(self._outputDir, "fugep.log"),
@@ -198,11 +201,24 @@ class Analyzer(metaclass = ABCMeta):
             outputFormat = self._outputFormat
         if analysis is None:
             analysis = self._analysis
+        
+        # Base constructor args for traditional handlers
         constructor_args = [self._features, colNamesOfIds,
-                outputPath, mult_predictions, save_mult_pred,  outputFormat, outputSize,
+                outputPath, mult_predictions, save_mult_pred, outputFormat, outputSize,
                 self._writeMemLimit // len(analysis)]
-        # if self._model._mult_predictions > 1:
-        #     self._save_mult_pred = True
+        
+        # Enhanced constructor args for new handlers
+        enhanced_args = {
+            'features': self._features,
+            'columns_for_ids': colNamesOfIds,
+            'output_path_prefix': outputPath,
+            'mult_predictions': mult_predictions,
+            'save_mult_pred': save_mult_pred,
+            'output_format': outputFormat,
+            'output_size': outputSize,
+            'write_mem_limit': self._writeMemLimit // len(analysis),
+            'data_type_config': self._dataTypeConfig
+        }
         
         reporters = []
         for i, s in enumerate(analysis):
@@ -210,61 +226,32 @@ class Analyzer(metaclass = ABCMeta):
             if i == 0:
                 write_labels = True
             
-            # Handle Parquet-specific handlers first
-            if outputFormat == 'parquet':
-                if "mean_gve" == s:
-                    from .ana_hdl.mean_gve_parquet import MeanGVEParquetHandler
-                    reporters.append(MeanGVEParquetHandler(
-                        *constructor_args, write_labels=write_labels))
-                elif "pval" == s:
-                    from .ana_hdl.pval_parquet import PvalParquetHandler
-                    reporters.append(PvalParquetHandler(
-                        *constructor_args, write_labels=write_labels))
-                # For other analysis types with parquet, fall back to existing handlers
-                elif "diffs" == s:
-                    reporters.append(DiffScoreHandler(
-                        *constructor_args, write_labels=write_labels))
-                elif "abs_diffs" == s:
-                    reporters.append(AbsDiffScoreHandler(
-                        *constructor_args, write_labels=write_labels))
-                elif "std" == s:
-                    reporters.append(StdHandler(
-                        *constructor_args, write_labels=write_labels))
-                elif "logits" == s:
-                    reporters.append(LogitScoreHandler(
-                        *constructor_args, write_labels=write_labels))
-                elif "predictions" == s and self._mode != "varianteffect":
-                    reporters.append(WritePredictionsHandler(
-                        *constructor_args, write_labels=write_labels))
-                elif "predictions" == s and self._mode == "varianteffect":
-                    reporters.append(WriteRefAltHandler(
-                        *constructor_args, write_labels=write_labels))
-            else:
-                # Original logic for TSV/HDF5 formats
-                if "diffs" == s:
-                    reporters.append(DiffScoreHandler(
-                        *constructor_args, write_labels=write_labels))
-                elif "abs_diffs" == s:
-                    reporters.append(AbsDiffScoreHandler(
-                        *constructor_args, write_labels=write_labels))
-                elif "std" == s:
-                    reporters.append(StdHandler(
-                        *constructor_args, write_labels=write_labels))
-                elif "mean_gve" == s:
-                    reporters.append(MeanGVEHandler(
-                        *constructor_args, write_labels=write_labels))
-                elif "pval" == s:
-                    reporters.append(PvalHandler(
-                        *constructor_args, write_labels=write_labels))
-                elif "logits" == s:
-                    reporters.append(LogitScoreHandler(
-                        *constructor_args, write_labels=write_labels))
-                elif "predictions" == s and self._mode != "varianteffect":
-                    reporters.append(WritePredictionsHandler(
-                        *constructor_args, write_labels=write_labels))
-                elif "predictions" == s and self._mode == "varianteffect":
-                    reporters.append(WriteRefAltHandler(
-                        *constructor_args, write_labels=write_labels))
+            enhanced_args['write_labels'] = write_labels
+            
+            # Use enhanced handlers for mean_gve and pval (supports both parquet and traditional formats)
+            if "mean_gve" == s:
+                reporters.append(create_mean_gve_handler(**enhanced_args))
+            elif "pval" == s:
+                reporters.append(create_pval_handler(**enhanced_args))
+            # Use traditional handlers for other analysis types
+            elif "diffs" == s:
+                reporters.append(DiffScoreHandler(
+                    *constructor_args, write_labels=write_labels))
+            elif "abs_diffs" == s:
+                reporters.append(AbsDiffScoreHandler(
+                    *constructor_args, write_labels=write_labels))
+            elif "std" == s:
+                reporters.append(StdHandler(
+                    *constructor_args, write_labels=write_labels))
+            elif "logits" == s:
+                reporters.append(LogitScoreHandler(
+                    *constructor_args, write_labels=write_labels))
+            elif "predictions" == s and self._mode != "varianteffect":
+                reporters.append(WritePredictionsHandler(
+                    *constructor_args, write_labels=write_labels))
+            elif "predictions" == s and self._mode == "varianteffect":
+                reporters.append(WriteRefAltHandler(
+                    *constructor_args, write_labels=write_labels))
         
         return reporters
         

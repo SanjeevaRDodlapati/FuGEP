@@ -22,7 +22,7 @@ class SeqAnalyzer(Analyzer, metaclass = ABCMeta):
                  save_mult_pred = False, outputFormat = 'tsv',
                  seqLen = None, batchSize = 64, useCuda = False,
                  dataParallel = False, refSeq = Genome,
-                 writeMemLimit = 5000, loggingVerbosity = 2):
+                 writeMemLimit = 5000, loggingVerbosity = 2, dataTypeConfig = 'memory_optimized'):
         '''
         Construct a new object of 'SeqAnalyzer'
         '''
@@ -41,7 +41,8 @@ class SeqAnalyzer(Analyzer, metaclass = ABCMeta):
                  dataParallel = dataParallel, 
                  refSeq = refSeq,
                  writeMemLimit = writeMemLimit,
-                 loggingVerbosity = loggingVerbosity)
+                 loggingVerbosity = loggingVerbosity,
+                 dataTypeConfig = dataTypeConfig)
         
         
     @abstractmethod    
