@@ -471,8 +471,8 @@ class PeakGVarEvaluator(GVarEvaluator):
                 self._handleRefAltPredictions(batchRefSeqs, batchAltSeqs, batchIds)
                 batchRefSeqs, batchAltSeqs, batchIds = [], [], []
 
-            if ix and ix % 1000 == 0:
-                print("[STEP {0}/{1}]: {2} s to process 1000 variants. ".format(
+            if ix and ix % 10000 == 0:
+                print("[STEP {0}/{1}]: {2} s to process 10000 variants. ".format(
                     ix, num_variants, time() - stepTime))
                 stepTime = time()
 

@@ -70,13 +70,20 @@ class OutputBackend(ABC):
             #             getsizeof(self._samples[0]) * len(self._samples))
             # return mem_used / 10**6 >= self._write_mem_limit
             
-            # Calculate memory for results using .nbytes (numpy array byte size)
+            # Calculate memory for results 
             results_memory = 0
-            if self._results and hasattr(self._results[0], 'nbytes'):
-                results_memory = self._results[0].nbytes * len(self._results)
-            else:
-                # Fallback for non-numpy arrays
-                results_memory = getsizeof(self._results[0]) * len(self._results)
+            if self._results:
+                if hasattr(self._results[0], 'nbytes'):
+                    # Traditional numpy array approach
+                    results_memory = self._results[0].nbytes * len(self._results)
+                else:
+                    # Enhanced backend approach - self._results is a list of individual result rows
+                    # Each row is [variant_id, feature1, feature2, ...]
+                    num_rows = len(self._results)
+                    if num_rows > 0:
+                        # Estimate bytes per row: variant_id (string ~50 bytes) + features (float ~8 bytes each)
+                        estimated_bytes_per_row = 50 + len(self.features) * 8
+                        results_memory = num_rows * estimated_bytes_per_row
             
             # Calculate memory for ID storage using getsizeof
             ids_memory = getsizeof(self._current_chunk_ids[0]) * len(self._current_chunk_ids)
@@ -113,7 +120,10 @@ class OutputBackend(ABC):
                     if hasattr(self._results[0], 'nbytes'):
                         results_mem = self._results[0].nbytes * len(self._results)
                     else:
-                        results_mem = getsizeof(self._results[0]) * len(self._results)
+                        # Enhanced backend - estimate memory for result rows
+                        num_rows = len(self._results)
+                        estimated_bytes_per_row = 50 + len(self.features) * 8
+                        results_mem = num_rows * estimated_bytes_per_row
                     ids_mem = getsizeof(self._current_chunk_ids[0]) * len(self._current_chunk_ids)
                     total_mb = (results_mem + ids_mem) / 10**6  # Traditional conversion
                     print(f"Written chunk {self._chunk_counter} with {result_count} rows "
@@ -194,7 +204,27 @@ class ParquetBackend(OutputBackend):
     
     def write_chunk(self, results, chunk_id):
         """Write results chunk to parquet file with optimal data types."""
+        # Use dynamic columns based on actual data
         columns = self.columns_for_ids + list(self.features)
+        
+        # Verify column count matches data
+        if results and len(results[0]) != len(columns):
+            actual_data_cols = len(results[0])
+            expected_cols = len(columns)
+            print(f"WARNING: Column count mismatch in ParquetBackend: expected {expected_cols}, got {actual_data_cols}")
+            
+            # Adjust columns to match actual data
+            if actual_data_cols < expected_cols:
+                # Fewer data columns than expected - truncate column names
+                columns = columns[:actual_data_cols]
+                print(f"DEBUG: Truncated columns to {len(columns)}")
+            elif actual_data_cols > expected_cols:
+                # More data columns than expected - add generic column names
+                extra_cols = actual_data_cols - expected_cols
+                extra_names = [f"extra_feature_{i}" for i in range(extra_cols)]
+                columns.extend(extra_names)
+                print(f"DEBUG: Added {extra_cols} extra columns: {extra_names}")
+        
         df = pd.DataFrame(results, columns=columns)
         
         # Apply optimal data types for memory efficiency  

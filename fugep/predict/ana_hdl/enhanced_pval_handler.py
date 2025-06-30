@@ -115,7 +115,7 @@ class EnhancedPvalHandler(PredictionsHandler):
         for i, variant_id in enumerate(batch_ids):
             # Create result row with NaN p-values (can't do t-test with single prediction)
             pvals = [np.nan] * len(self._features)
-            result_row = [variant_id] + pvals
+            result_row = list(variant_id) + pvals
             results.append(result_row)
         
         # Store results using appropriate method
@@ -138,28 +138,33 @@ class EnhancedPvalHandler(PredictionsHandler):
         
         This is the correct method for p-value computation following the original PvalHandler logic.
         """
-        # Calculate differences: baseline - variant predictions
+        # Calculate differences: baseline - variant predictions (matches original PvalHandler)
         diffs = baseline_predictions - batch_predictions
         
-        # Perform t-test across the multiple predictions (axis=0)
-        # This gives one p-value per feature
+        # Perform t-test across the multiple predictions (axis=0) - matches original PvalHandler
+        # diffs shape: (mult_predictions, batch_size, n_features) -> (5, 128, 151)
+        # After t-test: (batch_size, n_features) -> (128, 151)
         _, pvals = stats.ttest_1samp(diffs, 0, axis=0)
-        
-        # Prepare results
-        results = []
-        for i, variant_id in enumerate(batch_ids):
-            # All variants in this batch get the same p-values (computed across all predictions)
-            pvals_list = pvals.tolist() if hasattr(pvals, 'tolist') else list(pvals)
-            result_row = [variant_id] + pvals_list
-            results.append(result_row)
         
         # Store results using appropriate method
         if self._backend:
             # Use backend system (parquet, chunked formats)
+            
+            # Prepare results: each variant gets its own p-values
+            results = []
+            for i, variant_id in enumerate(batch_ids):
+                # Extract p-values for this variant (row i from pvals matrix)
+                # pvals shape is (batch_size, n_features), so pvals[i, :] gives p-values for variant i
+                variant_pvals = pvals[i, :].tolist()
+                
+                # Create result row: [chrom, pos, name] + [pval1, pval2, ..., pval151]
+                result_row = list(variant_id) + variant_pvals
+                results.append(result_row)
+            
             self._backend.add_results(results, batch_ids)
             # No need to accumulate IDs in handler - backend handles this
         else:
-            # Use traditional system (TSV, HDF5) - matches original PvalHandler
+            # Use traditional system (TSV, HDF5) - matches original PvalHandler exactly
             self._results.append(pvals)
             self._samples.append(batch_ids)
             if self._reached_mem_limit():
@@ -172,10 +177,6 @@ class EnhancedPvalHandler(PredictionsHandler):
         if self._backend:
             # Use backend system
             output_path = self._backend.finalize()
-            if isinstance(output_path, str):
-                print(f"P-value results written to {output_path}")
-            else:
-                print(f"P-value results written to {len(output_path)} chunk files")
         else:
             # Use traditional system
             super().write_to_file()

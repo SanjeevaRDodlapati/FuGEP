@@ -222,6 +222,24 @@ class OptimalDataTypes:
             raise ValueError(f"Unknown encoding_type: {encoding_type}")
 
 
+def get_optimal_types(use_case='production'):
+    """
+    Get optimal data types for the specified use case.
+    Convenience function that wraps OptimalDataTypes.get_recommended_schema().
+    
+    Parameters
+    ----------
+    use_case : str
+        Use case scenario ('production', 'memory_optimized', 'high_precision')
+        
+    Returns
+    -------
+    dict
+        Recommended data type schema
+    """
+    return OptimalDataTypes.get_recommended_schema(use_case)
+
+
 def apply_optimal_dtypes(df, columns_config, features):
     """
     Apply optimal data types to a genomics DataFrame.

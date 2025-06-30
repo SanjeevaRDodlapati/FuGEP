@@ -1,0 +1,36 @@
+--- 
+ops: [analyze] 
+model: { 
+class: DeepSEA, 
+classArgs: { 
+sequence_length: 1001, 
+n_targets: 151, 
+}, 
+built: pytorch, 
+mult_predictions: 5, 
+wrapper: UniSeqMWrapper, 
+non_strand_specific: mean 
+} 
+analyzer: !obj:fugep.predict.PeakGVarEvaluator { 
+analysis: [mean_gve, pval], 
+refSeq: !obj:fugep.data.Genome { 
+input_path: /scratch/ml-csm/datasets/genomics/ref-genome/human/GRCh38/ensembl/sequence/Homo_sapiens.GRCh38.dna.primary_assembly.fa
+}, 
+vcfFile: /scratch/ml-csm/projects/fgenom/gve/data/comb_chunks/variant_chunk_001.tsv,
+strandIdx: 5, 
+seqLen: 1001, 
+batchSize: 64, 
+useCuda: False, 
+dataParallel: True, 
+loggingVerbosity: 0, 
+writeMemLimit: 50, 
+save_mult_pred: True, 
+outputFormat: parquet, 
+dataTypeConfig: memory_optimized, 
+trainedModelPath: /scratch/ml-csm/projects/fgenom/gve/models/kmeans/1/best_model.pth.tar,
+features: !obj:fugep.utils.load_features_list { 
+input_path: /scratch/ml-csm/projects/fgenom/gve/data/features/kmeans/features_kmeans1.txt
+}, 
+} 
+variant_effect_prediction: {} 
+output_dir: /tmp/deepsea_debug_test/

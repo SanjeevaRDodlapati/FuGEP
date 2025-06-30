@@ -120,7 +120,7 @@ class EnhancedMeanGVEHandler(PredictionsHandler):
                 gve_mean = gve_values
             
             # Create result row
-            result_row = [variant_id] + gve_mean.tolist()
+            result_row = list(variant_id) + gve_mean.tolist()
             results.append(result_row)
         
         # Store results using appropriate method
@@ -139,29 +139,37 @@ class EnhancedMeanGVEHandler(PredictionsHandler):
     def handle_batch_mult_predictions(self, batch_predictions, batch_ids, baseline_predictions):
         """
         Calculate mean GVE for multiple predictions per variant.
+        Follows the exact same pattern as the original MeanGVEHandler.
         """
-        # Calculate differences: baseline - variant predictions  
+        # Calculate differences: baseline - variant predictions (matches original)
         diffs = baseline_predictions - batch_predictions
         
-        # Calculate mean GVE across multiple predictions
+        # Calculate mean GVE across multiple predictions (axis=0 - across mult_predictions)
+        # diffs shape: (mult_predictions, batch_size, n_features) -> (5, 128, 151)
+        # After mean: (batch_size, n_features) -> (128, 151)
         gve_mean = np.mean(diffs, axis=0)
-        
-        # Prepare results
-        results = []
-        for i, variant_id in enumerate(batch_ids):
-            result_row = [variant_id] + gve_mean[i].tolist()
-            results.append(result_row)
         
         # Store results using appropriate method
         if self._backend:
             # Use backend system (parquet, chunked formats)
+            
+            # Prepare results: each variant gets its own GVE scores
+            results = []
+            for i, variant_id in enumerate(batch_ids):
+                # Extract GVE scores for this variant (row i from gve_mean matrix)
+                # gve_mean shape is (batch_size, n_features), so gve_mean[i, :] gives GVE scores for variant i
+                variant_gve = gve_mean[i, :].tolist()
+                
+                # Create result row: [chrom, pos, name] + [gve1, gve2, ..., gve151]
+                result_row = list(variant_id) + variant_gve
+                results.append(result_row)
+            
             self._backend.add_results(results, batch_ids)
             # No need to accumulate IDs in handler - backend handles this
         else:
-            # Use traditional system (TSV, HDF5) - follow original handler pattern
-            # Traditional handlers expect numpy arrays, not lists of individual rows
-            self._results.append(gve_mean)    # Append the numpy array directly (like original)
-            self._samples.append(batch_ids)   # Append batch_ids as usual
+            # Use traditional system (TSV, HDF5) - matches original MeanGVEHandler exactly
+            self._results.append(gve_mean)
+            self._samples.append(batch_ids)
             if self._reached_mem_limit():
                 self.write_to_file()
     
@@ -172,10 +180,6 @@ class EnhancedMeanGVEHandler(PredictionsHandler):
         if self._backend:
             # Use backend system
             output_path = self._backend.finalize()
-            if isinstance(output_path, str):
-                print(f"Mean GVE results written to {output_path}")
-            else:
-                print(f"Mean GVE results written to {len(output_path)} chunk files")
         else:
             # Use traditional system
             super().write_to_file()
