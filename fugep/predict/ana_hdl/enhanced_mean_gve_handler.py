@@ -160,11 +160,20 @@ class EnhancedMeanGVEHandler(PredictionsHandler):
                 # gve_mean shape is (batch_size, n_features), so gve_mean[i, :] gives GVE scores for variant i
                 variant_gve = gve_mean[i, :].tolist()
                 
+                # Check for first variant to update backend feature count if needed
+                if i == 0:
+                    # Check if we need to update backend feature count
+                    if len(variant_gve) != len(self._features):
+                        # Update backend to handle actual feature count
+                        actual_feature_names = [f"gve_feature_{j}" for j in range(len(variant_gve))]
+                        self._backend.features = actual_feature_names
+                
                 # Create result row: [chrom, pos, name] + [gve1, gve2, ..., gve151]
                 result_row = list(variant_id) + variant_gve
                 results.append(result_row)
             
-            self._backend.add_results(results, batch_ids)
+            if results:
+                self._backend.add_results(results, batch_ids)
             # No need to accumulate IDs in handler - backend handles this
         else:
             # Use traditional system (TSV, HDF5) - matches original MeanGVEHandler exactly

@@ -157,11 +157,20 @@ class EnhancedPvalHandler(PredictionsHandler):
                 # pvals shape is (batch_size, n_features), so pvals[i, :] gives p-values for variant i
                 variant_pvals = pvals[i, :].tolist()
                 
+                # Check for first variant to update backend feature count if needed
+                if i == 0:
+                    # Check if we need to update backend feature count
+                    if len(variant_pvals) != len(self._features):
+                        # Update backend to handle actual feature count
+                        actual_feature_names = [f"pval_feature_{j}" for j in range(len(variant_pvals))]
+                        self._backend.features = actual_feature_names
+                
                 # Create result row: [chrom, pos, name] + [pval1, pval2, ..., pval151]
                 result_row = list(variant_id) + variant_pvals
                 results.append(result_row)
             
-            self._backend.add_results(results, batch_ids)
+            if results:
+                self._backend.add_results(results, batch_ids)
             # No need to accumulate IDs in handler - backend handles this
         else:
             # Use traditional system (TSV, HDF5) - matches original PvalHandler exactly
